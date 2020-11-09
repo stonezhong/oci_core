@@ -1,0 +1,5 @@
+.idea/
+build/
+src/oci_core.egg-info/
+dist/
+**/*/__pycache__/
