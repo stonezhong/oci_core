@@ -1,5 +1,5 @@
 .idea/
 build/
-src/oci_core.egg-info/
+oci_core.egg-info/
 dist/
 **/*/__pycache__/
