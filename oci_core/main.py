@@ -15,15 +15,16 @@ _OS_ENDPOINTS = {
     "SA_SAOPAULO_1" : "https://objectstorage.sa-saopaulo-1.oraclecloud.com",
     "AP_SYDNEY_1"   : "https://objectstorage.ap-sydney-1.oraclecloud.com",
     "EU_ZURICH_1"   : "https://objectstorage.eu-zurich-1.oraclecloud.com",
-    "AP_MELBOURNE_1": "https://objectstorage.ap-melbourne-1.oraclecloud.com",
-    "AP_OSAKA_1"    : "https://objectstorage.ap-osaka-1.oraclecloud.com",
-    "EU_AMSTERDAM_1": "https://objectstorage.eu-amsterdam-1.oraclecloud.com",
-    "ME_JEDDAH_1"   : "https://objectstorage.me-jeddah-1.oraclecloud.com",
-    "AP_HYDERABAD_1": "https://objectstorage.ap-hyderabad-1.oraclecloud.com",
+    "AP_MELBOURNE_1": "https://objectstorage.ap-melbourne-1.oraclecloud.com", 
+    "AP_OSAKA_1"    : "https://objectstorage.ap-osaka-1.oraclecloud.com", 
+    "EU_AMSTERDAM_1": "https://objectstorage.eu-amsterdam-1.oraclecloud.com", 
+    "ME_JEDDAH_1"   : "https://objectstorage.me-jeddah-1.oraclecloud.com", 
+    "AP_HYDERABAD_1": "https://objectstorage.ap-hyderabad-1.oraclecloud.com", 
     "CA_MONTREAL_1" : "https://objectstorage.ca-montreal-1.oraclecloud.com",
     "AP_CHUNCHEON_1": "https://objectstorage.ap-chuncheon-1.oraclecloud.com",
     "US_SANJOSE_1"  : "https://objectstorage.us-sanjose-1.oraclecloud.com",
     "ME_DUBAI_1"    : "https://objectstorage.me-dubai-1.oraclecloud.com",
+    "UK_CARDIFF_1"  : "https://objectstorage.uk-cardiff-1.oraclecloud.com",
 }
 
 _DF_ENDPOINTS = {
@@ -43,7 +44,11 @@ _DF_ENDPOINTS = {
     "EU_AMSTERDAM_1": "https://dataflow.eu-amsterdam-1.oci.oraclecloud.com",
     "ME_JEDDAH_1"   : "https://dataflow.me-jeddah-1.oci.oraclecloud.com",
     "AP_HYDERABAD_1": "https://dataflow.ap-hyderabad-1.oci.oraclecloud.com",
-    "CA_MONTREAL_1" : "https://dataflow.ca-montreal-1.oci.oraclecloud.com"
+    "CA_MONTREAL_1" : "https://dataflow.ca-montreal-1.oci.oraclecloud.com",
+    "AP_CHUNCHEON_1": "https://dataflow.ap-chuncheon-1.oci.oraclecloud.com",
+    "US_SANJOSE_1"  : "https://dataflow.us-sanjose-1.oci.oraclecloud.com",
+    # "ME_DUBAI_1"    : None,
+    # "UK_CARDIFF_1"  : None,
 }
 
 _READ_CHUNK_SIZE = 4*1024*1024
