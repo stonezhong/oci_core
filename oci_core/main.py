@@ -2,6 +2,7 @@ import oci
 import tempfile
 import json
 import os
+import time
 
 _OS_ENDPOINTS = {
     "PHX"           : "https://objectstorage.us-phoenix-1.oraclecloud.com",
@@ -80,7 +81,23 @@ def get_df_client(region, config=None):
     return client
 
 # upload file to object storage
-def os_upload(os_client, local_filename, namespace, bucket, object_name):
+def os_upload(os_client, local_filename, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
+    try:
+        _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name)
+        return
+    except (oci.exceptions.ServiceError, oci.exceptions.RequestException, oci._vendor.urllib3.exceptions.ProtocolError,) as e:
+        if i >= (retry_count - 1):
+            print("Upload object {} failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                object_name, i+1, e,  str(e)
+            ))
+            raise
+        print("Upload object {} failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+            object_name, i+1, e,  str(e), sleep_interval
+        ))
+        time.sleep(sleep_interval)
+
+
+def _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name):
     os_delete_object_if_exists(os_client, namespace, bucket, object_name)
     with open(local_filename, "rb") as f:
         os_client.put_object(namespace, bucket, object_name, f)
@@ -97,7 +114,23 @@ def os_upload_json(os_client, data, namespace, bucket, object_name):
         os.remove(tmp_f.name)
 
 # download file from object storage
-def os_download(os_client, local_filename, namespace, bucket, object_name):
+def os_download(os_client, local_filename, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
+    try:
+        _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name)
+        return
+    except (oci.exceptions.ServiceError, oci.exceptions.RequestException, oci._vendor.urllib3.exceptions.ProtocolError,) as e:
+        if i >= (retry_count - 1):
+            print("Download object {} failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                object_name, i+1, e,  str(e)
+            ))
+            raise
+        print("Download object {} failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+            object_name, i+1, e,  str(e), sleep_interval
+        ))
+        time.sleep(sleep_interval)
+
+
+def _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name):
     r = os_client.get_object(namespace, bucket, object_name)
 
     with open(local_filename, "wb") as f:
