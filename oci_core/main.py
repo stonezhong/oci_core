@@ -82,19 +82,22 @@ def get_df_client(region, config=None):
 
 # upload file to object storage
 def os_upload(os_client, local_filename, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
-    try:
-        _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name)
-        return
-    except (oci.exceptions.ServiceError, oci.exceptions.RequestException, oci._vendor.urllib3.exceptions.ProtocolError,) as e:
-        if i >= (retry_count - 1):
-            print("Upload object {} failed for {} times, error is: {}, message is: {}, no more retrying...".format(
-                object_name, i+1, e,  str(e)
+    if retry_count < 1:
+        raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
+    for i in range(0, retry_count):
+        try:
+            _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name)
+            return
+        except (oci.exceptions.ServiceError, oci.exceptions.RequestException, oci._vendor.urllib3.exceptions.ProtocolError,) as e:
+            if i >= (retry_count - 1):
+                print("Upload object {} failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    object_name, i+1, e,  str(e)
+                ))
+                raise
+            print("Upload object {} failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                object_name, i+1, e,  str(e), sleep_interval
             ))
-            raise
-        print("Upload object {} failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
-            object_name, i+1, e,  str(e), sleep_interval
-        ))
-        time.sleep(sleep_interval)
+            time.sleep(sleep_interval)
 
 
 def _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name):
@@ -115,19 +118,22 @@ def os_upload_json(os_client, data, namespace, bucket, object_name):
 
 # download file from object storage
 def os_download(os_client, local_filename, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
-    try:
-        _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name)
-        return
-    except (oci.exceptions.ServiceError, oci.exceptions.RequestException, oci._vendor.urllib3.exceptions.ProtocolError,) as e:
-        if i >= (retry_count - 1):
-            print("Download object {} failed for {} times, error is: {}, message is: {}, no more retrying...".format(
-                object_name, i+1, e,  str(e)
+    if retry_count < 1:
+        raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
+    for i in range(0, retry_count):
+        try:
+            _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name)
+            return
+        except (oci.exceptions.ServiceError, oci.exceptions.RequestException, oci._vendor.urllib3.exceptions.ProtocolError,) as e:
+            if i >= (retry_count - 1):
+                print("Download object {} failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    object_name, i+1, e,  str(e)
+                ))
+                raise
+            print("Download object {} failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                object_name, i+1, e,  str(e), sleep_interval
             ))
-            raise
-        print("Download object {} failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
-            object_name, i+1, e,  str(e), sleep_interval
-        ))
-        time.sleep(sleep_interval)
+            time.sleep(sleep_interval)
 
 
 def _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name):
