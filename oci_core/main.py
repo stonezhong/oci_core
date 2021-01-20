@@ -80,6 +80,18 @@ def get_df_client(region, config=None):
         client = oci.data_flow.DataFlowClient(config)
     return client
 
+def _shall_retry(e):
+    if isinstance(e, oci.exceptions.ServiceError):
+        if e.status == 503:
+            return True
+        else:
+            return False
+    if isinstance(e, oci.exceptions.RequestException):
+        return True
+    if isinstance(e, oci._vendor.urllib3.exceptions.ProtocolError):
+        return True
+    return False
+
 # upload file to object storage
 def os_upload(os_client, local_filename, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
     if retry_count < 1:
@@ -88,31 +100,35 @@ def os_upload(os_client, local_filename, namespace, bucket, object_name, retry_c
         try:
             _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name)
             return
-        except (oci.exceptions.ServiceError, oci.exceptions.RequestException, oci._vendor.urllib3.exceptions.ProtocolError,) as e:
-            if i >= (retry_count - 1):
-                print("Upload object {} failed for {} times, error is: {}, message is: {}, no more retrying...".format(
-                    object_name, i+1, e,  str(e)
+        except e:
+            if i >= (retry_count - 1) or not _shall_retry(e):
+                print("Upload object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    namespace, bucket, object_name, i+1, e,  str(e)
                 ))
                 raise
-            print("Upload object {} failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
-                object_name, i+1, e,  str(e), sleep_interval
+            print("Upload object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                namespace, bucket, object_name, i+1, e,  str(e), sleep_interval
             ))
             time.sleep(sleep_interval)
 
 
 def _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name):
-    os_delete_object_if_exists(os_client, namespace, bucket, object_name)
+    try:
+        os_client.delete_object(namespace, bucket, object_name)
+    except oci.exceptions.ServiceError as e:
+        if e.status!=404:
+            raise
     with open(local_filename, "rb") as f:
         os_client.put_object(namespace, bucket, object_name, f)
 
 # upload dict to object storage
-def os_upload_json(os_client, data, namespace, bucket, object_name):
+def os_upload_json(os_client, data, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
     tmp_f = tempfile.NamedTemporaryFile(delete=False)
     tmp_f.write(json.dumps(data).encode('utf-8'))
     tmp_f.close()
 
     try:
-        os_upload(os_client, tmp_f.name, namespace, bucket, object_name)
+        os_upload(os_client, tmp_f.name, namespace, bucket, object_name, retry_count=retry_count, sleep_interval=sleep_interval)
     finally:
         os.remove(tmp_f.name)
 
@@ -124,14 +140,14 @@ def os_download(os_client, local_filename, namespace, bucket, object_name, retry
         try:
             _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name)
             return
-        except (oci.exceptions.ServiceError, oci.exceptions.RequestException, oci._vendor.urllib3.exceptions.ProtocolError,) as e:
-            if i >= (retry_count - 1):
-                print("Download object {} failed for {} times, error is: {}, message is: {}, no more retrying...".format(
-                    object_name, i+1, e,  str(e)
+        except e:
+            if i >= (retry_count - 1) or not _shall_retry(e):
+                print("Download object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    namespace, bucket, object_name, i+1, e,  str(e)
                 ))
                 raise
-            print("Download object {} failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
-                object_name, i+1, e,  str(e), sleep_interval
+            print("Download object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                namespace, bucket, object_name, i+1, e,  str(e), sleep_interval
             ))
             time.sleep(sleep_interval)
 
@@ -145,12 +161,12 @@ def _os_download_no_retry(os_client, local_filename, namespace, bucket, object_n
 
 
 # read a json file from object storage, return the json object
-def os_download_json(os_client, namespace, bucket, object_name):
+def os_download_json(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
     tmp_f = tempfile.NamedTemporaryFile(delete=False)
     tmp_f.close()
 
     try:
-        os_download(os_client, tmp_f.name, namespace, bucket, object_name)
+        os_download(os_client, tmp_f.name, namespace, bucket, object_name, retry_count=retry_count, sleep_interval=sleep_interval)
         with open(tmp_f.name) as f:
             return json.load(f)
     finally:
@@ -174,29 +190,93 @@ def dfapp_get_os_client(region, delegation_token):
     )
     return client
 
-# delete objects based on object name prefix
-def os_delete_objects(os_client, namespace, bucket, prefix):
-    for record in oci.pagination.list_call_get_all_results_generator(
-        os_client.list_objects, 'record', namespace, bucket, prefix=prefix, fields = "name",
-    ):
-        os_client.delete_object(namespace, bucket, record.name)
+def os_delete_object(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
+    if retry_count < 1:
+        raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
+    for i in range(0, retry_count):
+        try:
+            os_client.delete_object(namespace, bucket, object_name)
+            return
+        except e:
+            if i >= (retry_count - 1) or not _shall_retry(e):
+                print("Delete object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    namespace, bucket, object_name,
+                    i+1, e,  str(e)
+                ))
+                raise
+            print("Delete object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                namespace, bucket, object_name,
+                i+1, e,  str(e), sleep_interval
+            ))
+            time.sleep(sleep_interval)
 
-def os_delete_object_if_exists(os_client, namespace, bucket, object_name):
+
+def list_objects_start_with(os_client, namespace, bucket, prefix, fields="name", retry_count=5, sleep_interval=5):
+    if retry_count < 1:
+        raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
+    for i in range(0, retry_count):
+        try:
+            return oci.pagination.list_call_get_all_results_generator(
+                os_client.list_objects, 
+                'record', 
+                namespace, bucket, prefix=prefix, 
+                fields = "name",
+            )
+        except e:
+            if i >= (retry_count - 1) or not _shall_retry(e):
+                print("List object (namespace={}, bucket={}, prefix={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    namespace, bucket, prefix,
+                    i+1, e,  str(e)
+                ))
+                raise
+            print("List object (namespace={}, bucket={}, prefix={}) failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                namespace, bucket, prefix,
+                i+1, e,  str(e), sleep_interval
+            ))
+            time.sleep(sleep_interval)
+
+
+# delete objects based on object name prefix
+def os_delete_objects(os_client, namespace, bucket, prefix, retry_count=5, sleep_interval=5):
+    for record in self.list_objects_start_with(
+        os_client, namespace, bucket, prefix, fields="name", retry_count=retry_count, sleep_interval=sleep_interval
+    ):
+        os_delete_object(os_client, namespace, bucket, record.name, retry_count=retry_count, sleep_interval=sleep_interval):
+
+def os_delete_object_if_exists(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
     try:
-        os_client.delete_object(namespace, bucket, object_name)
+        os_delete_object(os_client, namespace, bucket, record.name, retry_count=retry_count, sleep_interval=sleep_interval):
     except oci.exceptions.ServiceError as e:
         if e.status!=404:
             raise
 
-def os_rename_objects(os_client, namespace, bucket, prefix, new_name_cb):
-    for record in oci.pagination.list_call_get_all_results_generator(
-        os_client.list_objects, 'record', namespace, bucket, prefix=prefix, fields = "name",
+def os_rename_object(os_client, namespace, bucket, source_name, new_name, retry_count=5, sleep_interval=5):
+    if retry_count < 1:
+        raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
+    rod = oci.object_storage.models.RenameObjectDetails(
+        source_name = source_name,
+        new_name = new_name,
+    )
+    for i in range(0, retry_count):
+        try:
+            os_client.rename_object(namespace, bucket, rod)
+            return
+        except e:
+            if i >= (retry_count - 1) or not _shall_retry(e):
+                print("Rename object (namespace={}, bucket={}, source_name={}, new_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    namespace, bucket, source_name, new_name, i+1, e,  str(e)
+                ))
+                raise
+            print("Rename object (namespace={}, bucket={}, source_name={}, new_name={}) failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                namespace, bucket, source_name, new_name, i+1, e,  str(e), sleep_interval
+            ))
+            time.sleep(sleep_interval)
+
+def os_rename_objects(os_client, namespace, bucket, prefix, new_name_cb, retry_count=5, sleep_interval=5):
+    for record in self.list_objects_start_with(
+        os_client, namespace, bucket, prefix, fields="name", retry_count=retry_count, sleep_interval=sleep_interval
     ):
-        rod = oci.object_storage.models.RenameObjectDetails(
-            new_name = new_name_cb(record.name),
-            source_name = record.name,
-        )
-        os_client.rename_object(namespace, bucket, rod)
+        os_rename_object(os_client, namespace, bucket, source_name, new_name, retry_count=retry_count, sleep_interval=sleep_interval)
 
 def os_get_endpoint(region):
     return _OS_ENDPOINTS[region]
