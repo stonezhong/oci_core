@@ -211,6 +211,29 @@ def os_delete_object(os_client, namespace, bucket, object_name, retry_count=5, s
             time.sleep(sleep_interval)
 
 
+def os_has_object(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
+    if retry_count < 1:
+        raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
+    for i in range(0, retry_count):
+        try:
+            os_client.head_object(namespace, bucket, object_name)
+            return True
+        except e:
+            if isinstance(e, oci.exceptions.ServiceError) and e.status == 404:
+                return False
+            if i >= (retry_count - 1) or not _shall_retry(e):
+                print("Head object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    namespace, bucket, object_name,
+                    i+1, e,  str(e)
+                ))
+                raise
+            print("Head object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                namespace, bucket, object_name,
+                i+1, e,  str(e), sleep_interval
+            ))
+            time.sleep(sleep_interval)
+
+
 def list_objects_start_with(os_client, namespace, bucket, prefix, fields="name", retry_count=5, sleep_interval=5):
     if retry_count < 1:
         raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
