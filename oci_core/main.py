@@ -264,11 +264,11 @@ def os_delete_objects(os_client, namespace, bucket, prefix, retry_count=5, sleep
     for record in self.list_objects_start_with(
         os_client, namespace, bucket, prefix, fields="name", retry_count=retry_count, sleep_interval=sleep_interval
     ):
-        os_delete_object(os_client, namespace, bucket, record.name, retry_count=retry_count, sleep_interval=sleep_interval):
+        os_delete_object(os_client, namespace, bucket, record.name, retry_count=retry_count, sleep_interval=sleep_interval)
 
 def os_delete_object_if_exists(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
     try:
-        os_delete_object(os_client, namespace, bucket, record.name, retry_count=retry_count, sleep_interval=sleep_interval):
+        os_delete_object(os_client, namespace, bucket, record.name, retry_count=retry_count, sleep_interval=sleep_interval)
     except oci.exceptions.ServiceError as e:
         if e.status!=404:
             raise
