@@ -100,7 +100,7 @@ def os_upload(os_client, local_filename, namespace, bucket, object_name, retry_c
         try:
             _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name)
             return
-        except e:
+        except Exception as e:
             if i >= (retry_count - 1) or not _shall_retry(e):
                 print("Upload object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
                     namespace, bucket, object_name, i+1, e,  str(e)
@@ -140,7 +140,7 @@ def os_download(os_client, local_filename, namespace, bucket, object_name, retry
         try:
             _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name)
             return
-        except e:
+        except Exception as e:
             if i >= (retry_count - 1) or not _shall_retry(e):
                 print("Download object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
                     namespace, bucket, object_name, i+1, e,  str(e)
@@ -197,7 +197,7 @@ def os_delete_object(os_client, namespace, bucket, object_name, retry_count=5, s
         try:
             os_client.delete_object(namespace, bucket, object_name)
             return
-        except e:
+        except Exception as e:
             if i >= (retry_count - 1) or not _shall_retry(e):
                 print("Delete object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
                     namespace, bucket, object_name,
@@ -218,7 +218,7 @@ def os_has_object(os_client, namespace, bucket, object_name, retry_count=5, slee
         try:
             os_client.head_object(namespace, bucket, object_name)
             return True
-        except e:
+        except Exception as e:
             if isinstance(e, oci.exceptions.ServiceError) and e.status == 404:
                 return False
             if i >= (retry_count - 1) or not _shall_retry(e):
@@ -245,7 +245,7 @@ def list_objects_start_with(os_client, namespace, bucket, prefix, fields="name",
                 namespace, bucket, prefix=prefix, 
                 fields = "name",
             )
-        except e:
+        except Exception as e:
             if i >= (retry_count - 1) or not _shall_retry(e):
                 print("List object (namespace={}, bucket={}, prefix={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
                     namespace, bucket, prefix,
@@ -284,7 +284,7 @@ def os_rename_object(os_client, namespace, bucket, source_name, new_name, retry_
         try:
             os_client.rename_object(namespace, bucket, rod)
             return
-        except e:
+        except Exception as e:
             if i >= (retry_count - 1) or not _shall_retry(e):
                 print("Rename object (namespace={}, bucket={}, source_name={}, new_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
                     namespace, bucket, source_name, new_name, i+1, e,  str(e)
