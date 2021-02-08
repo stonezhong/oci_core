@@ -261,7 +261,7 @@ def list_objects_start_with(os_client, namespace, bucket, prefix, fields="name",
 
 # delete objects based on object name prefix
 def os_delete_objects(os_client, namespace, bucket, prefix, retry_count=5, sleep_interval=5):
-    for record in self.list_objects_start_with(
+    for record in list_objects_start_with(
         os_client, namespace, bucket, prefix, fields="name", retry_count=retry_count, sleep_interval=sleep_interval
     ):
         os_delete_object(os_client, namespace, bucket, record.name, retry_count=retry_count, sleep_interval=sleep_interval)
@@ -296,7 +296,7 @@ def os_rename_object(os_client, namespace, bucket, source_name, new_name, retry_
             time.sleep(sleep_interval)
 
 def os_rename_objects(os_client, namespace, bucket, prefix, new_name_cb, retry_count=5, sleep_interval=5):
-    for record in self.list_objects_start_with(
+    for record in list_objects_start_with(
         os_client, namespace, bucket, prefix, fields="name", retry_count=retry_count, sleep_interval=sleep_interval
     ):
         os_rename_object(os_client, namespace, bucket, source_name, new_name, retry_count=retry_count, sleep_interval=sleep_interval)
