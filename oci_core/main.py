@@ -243,7 +243,7 @@ def list_objects_start_with(os_client, namespace, bucket, prefix, fields="name",
                 os_client.list_objects, 
                 'record', 
                 namespace, bucket, prefix=prefix, 
-                fields = "name",
+                fields = fields,
             )
         except Exception as e:
             if i >= (retry_count - 1) or not _shall_retry(e):
