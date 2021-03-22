@@ -26,6 +26,7 @@ _OS_ENDPOINTS = {
     "US_SANJOSE_1"  : "https://objectstorage.us-sanjose-1.oraclecloud.com",
     "ME_DUBAI_1"    : "https://objectstorage.me-dubai-1.oraclecloud.com",
     "UK_CARDIFF_1"  : "https://objectstorage.uk-cardiff-1.oraclecloud.com",
+    "SA_SANTIAGO_1" : "https://objectstorage.sa-santiago-1.oraclecloud.com",
 }
 
 _DF_ENDPOINTS = {
@@ -48,8 +49,9 @@ _DF_ENDPOINTS = {
     "CA_MONTREAL_1" : "https://dataflow.ca-montreal-1.oci.oraclecloud.com",
     "AP_CHUNCHEON_1": "https://dataflow.ap-chuncheon-1.oci.oraclecloud.com",
     "US_SANJOSE_1"  : "https://dataflow.us-sanjose-1.oci.oraclecloud.com",
-    # "ME_DUBAI_1"    : None,
-    # "UK_CARDIFF_1"  : None,
+    "ME_DUBAI_1"    : "https://dataflow.me-dubai-1.oci.oraclecloud.com",
+    "UK_CARDIFF_1"  : "https://dataflow.uk-cardiff-1.oci.oraclecloud.com",
+    "SA_SANTIAGO_1" : "https://dataflow.sa-santiago-1.oci.oraclecloud.com",
 }
 
 _READ_CHUNK_SIZE = 4*1024*1024
