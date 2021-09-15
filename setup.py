@@ -11,7 +11,7 @@ with open(os.path.join(HERE, "README.md"), "r") as f:
 # This call to setup() does all the work
 setup(
     name="oci-core",
-    version="0.0.15",
+    version="0.0.47",
     description="OCI Core Helper",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -22,5 +22,5 @@ setup(
         "Programming Language :: Python :: 3",
     ],
     packages=["oci_core"],
-    install_requires=["oci"],
+    install_requires=["oci", "cachetools"],
 )
