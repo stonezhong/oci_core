@@ -43,6 +43,8 @@ _REGION_ID_TO_NAME_DICT = {
     "AP_SEOUL_1"    : "ap-seoul-1",           # AP - Seoul
     "AP_SYDNEY_1"   : "ap-sydney-1",          # AP - Sydney
     "AP_TOKYO_1"    : "ap-tokyo-1",           # AP - Tokyo
+
+    "IL_JERUSALEM_1": "il-jerusalem-1",       # IL - Jerusalem
 }
 
 # Object Storage Service API
