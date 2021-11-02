@@ -16,61 +16,13 @@ logger = logging.getLogger(__name__)
 _REGION_ID_TO_NAME_DICT = {
     "IAD"           : "us-ashburn-1",         # US - IAD
     "PHX"           : "us-phoenix-1",         # US - PHX
-    "US_SANJOSE_1"  : "us-sanjose-1",         # US - San Jose
-
-    "UK_CARDIFF_1"  : "uk-cardiff-1",         # UK - Cardiff
-    "UK_LONDON_1"   : "uk-london-1",          # UK - London
-
-    "CA_MONTREAL_1" : "ca-montreal-1",        # CA - Montreal
-    "CA_TORONTO_1"  : "ca-toronto-1",         # CA - Toronto
-
-    "EU_AMSTERDAM_1": "eu-amsterdam-1",       # EU - Amsterdam
-    "EU_FRANKFURT_1": "eu-frankfurt-1",       # EU - Frankfurt
-    "EU_ZURICH_1"   : "eu-zurich-1",          # EU - Zurich
-
-    "SA_SANTIAGO_1" : "sa-santiago-1",        # SA - Santiago
-    "SA_SAOPAULO_1" : "sa-saopaulo-1",        # SA - Sao Paulo
-    "SA_VINHEDO_1"  : "sa-vinhedo-1",         # SA - Vinhedo
-
-    "ME_DUBAI_1"    : "me-dubai-1",           # ME - Dubai
-    "ME_JEDDAH_1"   : "me-jeddah-1",          # ME - Jeddah
-
-    "AP_CHUNCHEON_1": "ap-chuncheon-1",       # AP - Chuncheon
-    "AP_MELBOURNE_1": "ap-melbourne-1",       # AP - Melbourne
-    "AP_MUMBAI_1"   : "ap-mumbai-1",          # AP - Mumbai
-    "AP_HYDERABAD_1": "ap-hyderabad-1",       # AP - Hyderabad
-    "AP_OSAKA_1"    : "ap-osaka-1",           # AP - Osaka
-    "AP_SEOUL_1"    : "ap-seoul-1",           # AP - Seoul
-    "AP_SYDNEY_1"   : "ap-sydney-1",          # AP - Sydney
-    "AP_TOKYO_1"    : "ap-tokyo-1",           # AP - Tokyo
-
-    "IL_JERUSALEM_1": "il-jerusalem-1",       # IL - Jerusalem
 }
 
-# Object Storage Service API
-_OS_ENDPOINTS = {
-    region_id: f"https://objectstorage.{region_name}.oraclecloud.com" \
-        for region_id, region_name in _REGION_ID_TO_NAME_DICT.items()
-}
-
-# Data Flow API
-_DF_ENDPOINTS = {
-    region_id: f"https://dataflow.{region_name}.oci.oraclecloud.com" \
-        for region_id, region_name in _REGION_ID_TO_NAME_DICT.items()
-}
-
-# Vault Service Secret Management API
-_VSSM_ENDPOINTS = {
-    region_id: f"https://vaults.{region_name}.oci.oraclecloud.com" \
-        for region_id, region_name in _REGION_ID_TO_NAME_DICT.items()
-}
-
-# Vault Service Secret Retrieval API
-_VSSR_ENDPOINTS = {
-    region_id: f"https://secrets.vaults.{region_name}.oci.oraclecloud.com" \
-        for region_id, region_name in _REGION_ID_TO_NAME_DICT.items()
-}
-
+def get_region_name(region):
+    if region in _REGION_ID_TO_NAME_DICT:
+        return _REGION_ID_TO_NAME_DICT[region]
+    else:
+        return region.replace("_", "-").lower()
 
 
 def _shall_retry_signer(e):
@@ -118,34 +70,42 @@ def _get_signer_unsafe(retry_count=5, sleep_interval=5):
 
 
 # get oci client for a given service
-def _get_oci_service_client(service_client_class, endpoint_dict, region, config=None):
+def _get_oci_service_client(service_client_class, service_endpoint, config=None):
     # if config is None, then we are using instance principle
     if config is None:
         signer = _get_signer()
         client = service_client_class(
             {}, signer=signer, 
-            service_endpoint=None if region is None else endpoint_dict[region]
+            service_endpoint=service_endpoint
         )
     else:
         client = service_client_class(config)
     return client
 
 
+# Object Storage Service API
 # get object storage client
 def get_os_client(region, config=None):
+    if region is None:
+        service_endpoint = None
+    else:
+        service_endpoint = f"https://objectstorage.{get_region_name(region)}.oraclecloud.com"
     return _get_oci_service_client(
         oci.object_storage.ObjectStorageClient, 
-        _OS_ENDPOINTS, 
-        region, 
+        service_endpoint, 
         config=config
     )
 
+# Data Flow API
 # get dataflow client using instance principle
 def get_df_client(region, config=None):
+    if region is None:
+        service_endpoint = None
+    else:
+        service_endpoint = f"https://dataflow.{get_region_name(region)}.oci.oraclecloud.com"
     return _get_oci_service_client(
         oci.data_flow.DataFlowClient, 
-        _DF_ENDPOINTS, 
-        region, 
+        service_endpoint, 
         config=config
     )
 
@@ -281,9 +241,13 @@ def get_delegation_token(spark):
 
 # get object storage client from dataflow app, using delegation token
 def dfapp_get_os_client(region, delegation_token):
+    if region is None:
+        service_endpoint = None
+    else:
+        service_endpoint = f"https://objectstorage.{get_region_name(region)}.oraclecloud.com"
     signer = oci.auth.signers.InstancePrincipalsDelegationTokenSigner(delegation_token=delegation_token)
     client = oci.object_storage.ObjectStorageClient(
-        {}, signer=signer, service_endpoint=_OS_ENDPOINTS[region]
+        {}, signer=signer, service_endpoint=service_endpoint
     )
     return client
 
@@ -392,31 +356,70 @@ def os_rename_object(os_client, namespace, bucket, source_name, new_name, retry_
             ))
             time.sleep(sleep_interval)
 
+def os_copy_object(
+    os_client, 
+    src_namespace_name, src_bucket_name, src_object_name,
+    dst_region, dst_namespace_name, dst_bucket_name, dst_object_name,
+    retry_count=5, sleep_interval=5
+):
+    if retry_count < 1:
+        raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
+    cod = oci.object_storage.models.CopyObjectDetails(
+        destination_region      = get_region_name(dst_region),
+        destination_bucket      = dst_bucket_name,
+        destination_namespace   = dst_namespace_name,
+        destination_object_name = dst_object_name,
+        source_object_name      = src_object_name
+    )
+    for i in range(0, retry_count):
+        try:
+            os_client.copy_object(
+                src_namespace_name,
+                src_bucket_name,
+                cod
+            )
+            return
+        except Exception as e:
+            if i >= (retry_count - 1) or not _shall_retry(e):
+                logger.error("Copy object (src_namespace_name={}, src_bucket_name={}, src_object_name={}, dst_region={}, dst_namespace_name={}, dst_bucket_name={}, dst_object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    src_namespace_name, src_bucket_name, src_object_name, dst_region, dst_namespace_name, dst_bucket_name, dst_object_name, i+1, e,  str(e)
+                ))
+                raise
+            logger.warning("Copy object (src_namespace_name={}, src_bucket_name={}, src_object_name={}, dst_region={}, dst_namespace_name={}, dst_bucket_name={}, dst_object_name={}) failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                src_namespace_name, src_bucket_name, src_object_name, dst_region, dst_namespace_name, dst_bucket_name, dst_object_name, i+1, e,  str(e), sleep_interval
+            ))
+            time.sleep(sleep_interval)
+
 def os_rename_objects(os_client, namespace, bucket, prefix, new_name_cb, retry_count=5, sleep_interval=5):
     for record in list_objects_start_with(
         os_client, namespace, bucket, prefix, fields="name", retry_count=retry_count, sleep_interval=sleep_interval
     ):
         os_rename_object(os_client, namespace, bucket, source_name, new_name, retry_count=retry_count, sleep_interval=sleep_interval)
 
-def os_get_endpoint(region):
-    return _OS_ENDPOINTS[region]
-
 # For secret service
 
+# Vault Service Secret Retrieval API
 # get secret service client
 def get_secrets_client(region=None, config=None):
+    if region is None:
+        service_endpoint = None
+    else:
+        service_endpoint = f"https://secrets.vaults.{get_region_name(region)}.oci.oraclecloud.com"
     return _get_oci_service_client(
         oci.secrets.SecretsClient, 
-        _VSSR_ENDPOINTS, 
-        region, 
+        service_endpoint,
         config=config
     )
 
+# Vault Service Secret Management API
 def get_vaults_client(region=None, config=None):
+    if region is None:
+        service_endpoint = None
+    else:
+        service_endpoint = f"https://vaults.{get_region_name(region)}.oci.oraclecloud.com"
     return _get_oci_service_client(
         oci.vault.VaultsClient, 
-        _VSSM_ENDPOINTS, 
-        region, 
+        service_endpoint,
         config=config
     )
 
