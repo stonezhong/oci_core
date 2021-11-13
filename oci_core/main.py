@@ -142,11 +142,6 @@ def os_upload(os_client, local_filename, namespace, bucket, object_name, retry_c
 
 
 def _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name):
-    try:
-        os_client.delete_object(namespace, bucket, object_name)
-    except oci.exceptions.ServiceError as e:
-        if e.status!=404:
-            raise
     with open(local_filename, "rb") as f:
         os_client.put_object(namespace, bucket, object_name, f)
 
