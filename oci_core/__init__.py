@@ -4,4 +4,6 @@ from .main import get_os_client, get_df_client, os_upload, os_upload_json, \
     os_rename_objects, os_rename_object, os_has_object, list_objects_start_with, \
     get_secrets_client, get_vaults_client, secrets_read_value, secrets_read_value_by_name, \
     secrets_list_secrets, secrets_create_value, secrets_update_value, secrets_delete_value, \
-    secrets_undelete_value, secrets_create_or_update_value, get_region_name, os_copy_object
+    secrets_undelete_value, secrets_create_or_update_value, get_region_name, os_copy_object, \
+    os_get_etag, os_download_json_with_etag, get_stream_client
+from .bucket import Bucket

@@ -122,13 +122,13 @@ def _shall_retry(e):
     return False
 
 # upload file to object storage
-def os_upload(os_client, local_filename, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
+def os_upload(os_client, local_filename, namespace, bucket, object_name, retry_count=5, sleep_interval=5, opts={}):
     if retry_count < 1:
         raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
     for i in range(0, retry_count):
         try:
-            _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name)
-            return
+            etag = _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name, opts=opts)
+            return etag
         except Exception as e:
             if i >= (retry_count - 1) or not _shall_retry(e):
                 logger.error("Upload object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
@@ -141,27 +141,29 @@ def os_upload(os_client, local_filename, namespace, bucket, object_name, retry_c
             time.sleep(sleep_interval)
 
 
-def _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name):
+def _os_upload_no_retry(os_client, local_filename, namespace, bucket, object_name, opts={}):
     with open(local_filename, "rb") as f:
-        os_client.put_object(namespace, bucket, object_name, f)
+        r = os_client.put_object(namespace, bucket, object_name, f, **opts)
+    return r.headers['etag']
 
 # upload dict to object storage
-def os_upload_json(os_client, data, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
+def os_upload_json(os_client, data, namespace, bucket, object_name, retry_count=5, sleep_interval=5, opts={}):
     tmp_f = tempfile.NamedTemporaryFile(delete=False)
     tmp_f.write(json.dumps(data).encode('utf-8'))
     tmp_f.close()
 
     try:
-        os_upload(os_client, tmp_f.name, namespace, bucket, object_name, retry_count=retry_count, sleep_interval=sleep_interval)
+        etag = os_upload(os_client, tmp_f.name, namespace, bucket, object_name, retry_count=retry_count, sleep_interval=sleep_interval, opts=opts)
+        return etag
     finally:
         os.remove(tmp_f.name)
 
-def os_download_to_memory(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5, chunk_size=4194304):
+def os_download_to_memory(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5, chunk_size=4194304, opts={}):
     if retry_count < 1:
         raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
     for i in range(0, retry_count):
         try:
-            return _os_download_to_memory_no_retry(os_client, namespace, bucket, object_name, chunk_size)
+            return _os_download_to_memory_no_retry(os_client, namespace, bucket, object_name, chunk_size, opts=opts)
         except Exception as e:
             if i >= (retry_count - 1) or not _shall_retry(e):
                 logger.error("Download object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
@@ -174,8 +176,8 @@ def os_download_to_memory(os_client, namespace, bucket, object_name, retry_count
             time.sleep(sleep_interval)
 
 
-def _os_download_to_memory_no_retry(os_client, namespace, bucket, object_name, chunk_size):
-    r = os_client.get_object(namespace, bucket, object_name)
+def _os_download_to_memory_no_retry(os_client, namespace, bucket, object_name, chunk_size, opts={}):
+    r = os_client.get_object(namespace, bucket, object_name, **opts)
     f = io.BytesIO()
     try:
         for chunk in r.data.raw.stream(chunk_size, decode_content=False):
@@ -185,13 +187,13 @@ def _os_download_to_memory_no_retry(os_client, namespace, bucket, object_name, c
         f.close()
 
 # download file from object storage
-def os_download(os_client, local_filename, namespace, bucket, object_name, retry_count=5, sleep_interval=5, chunk_size=4194304):
+def os_download(os_client, local_filename, namespace, bucket, object_name, retry_count=5, sleep_interval=5, chunk_size=4194304, opts={}):
     if retry_count < 1:
         raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
     for i in range(0, retry_count):
         try:
-            _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name, chunk_size)
-            return
+            etag = _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name, chunk_size, opts=opts)
+            return etag
         except Exception as e:
             if i >= (retry_count - 1) or not _shall_retry(e):
                 logger.error("Download object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
@@ -204,23 +206,58 @@ def os_download(os_client, local_filename, namespace, bucket, object_name, retry
             time.sleep(sleep_interval)
 
 
-def _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name, chunk_size):
-    r = os_client.get_object(namespace, bucket, object_name)
+def _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name, chunk_size, opts={}):
+    r = os_client.get_object(namespace, bucket, object_name, **opts)
 
     with open(local_filename, "wb") as f:
         for chunk in r.data.raw.stream(chunk_size, decode_content=False):
             f.write(chunk)
+    return r.headers['etag']
 
+
+def os_get_etag(os_client, namespace, bucket,  object_name, retry_count=5, sleep_interval=5):
+    """Get object etag, or return None if object does not exist.
+    """
+    if retry_count < 1:
+        raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
+    for i in range(0, retry_count):
+        try:
+            r = os_client.head_object(namespace, bucket, object_name)
+            return r.headers['etag']
+        except Exception as e:
+            if isinstance(e, oci.exceptions.ServiceError) and e.status == 404:
+                return None
+            if i >= (retry_count - 1) or not _shall_retry(e):
+                logger.error("Head object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    namespace, bucket, object_name, i+1, e,  str(e)
+                ))
+                raise
+            logger.warning("Head object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                namespace, bucket, object_name, i+1, e,  str(e), sleep_interval
+            ))
+            time.sleep(sleep_interval)
 
 # read a json file from object storage, return the json object
-def os_download_json(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
+def os_download_json(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5, opts={}):
     tmp_f = tempfile.NamedTemporaryFile(delete=False)
     tmp_f.close()
 
     try:
-        os_download(os_client, tmp_f.name, namespace, bucket, object_name, retry_count=retry_count, sleep_interval=sleep_interval)
+        os_download(os_client, tmp_f.name, namespace, bucket, object_name, retry_count=retry_count, sleep_interval=sleep_interval, opts=opts)
         with open(tmp_f.name) as f:
             return json.load(f)
+    finally:
+        os.remove(tmp_f.name)
+
+# same as os_download_json, but etag is also returned
+def os_download_json_with_etag(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5, opts={}):
+    tmp_f = tempfile.NamedTemporaryFile(delete=False)
+    tmp_f.close()
+
+    try:
+        etag = os_download(os_client, tmp_f.name, namespace, bucket, object_name, retry_count=retry_count, sleep_interval=sleep_interval, opts=opts)
+        with open(tmp_f.name) as f:
+            return json.load(f), etag
     finally:
         os.remove(tmp_f.name)
 
@@ -604,3 +641,21 @@ def lock(lock_filename, wait_duration=600, sleep_duration=1):
         if lock_acquired:
             fcntl.flock(f, fcntl.LOCK_UN)
         f.close()
+
+# Streaming Client API
+# get streaming client
+def get_stream_client(service_endpoint, config=None):
+    if config is None:
+        signer = _get_signer()
+        client = oci.streaming.StreamClient(
+            {}, 
+            service_endpoint=service_endpoint,
+            signer=signer
+        )
+    else:
+        client = oci.streaming.StreamClient(
+        config, 
+        service_endpoint=service_endpoint,
+    )
+    return client
+
