@@ -5,7 +5,7 @@ from typing import Optional, List, Generator, Callable, Tuple
 import time
 import os
 
-from oci_core import list_objects_start_with, os_upload_json, os_download_json_with_etag, os_download, os_upload, os_copy_object
+from oci_core import list_objects_start_with, os_upload_json, os_download_json_with_etag, os_download, os_upload, os_copy_object, os_delete_object
 from oci.object_storage.object_storage_client import ObjectStorageClient
 from oci.object_storage.models import ObjectSummary
 import oci
@@ -305,3 +305,14 @@ class Bucket:
             retry_count=retry_count, 
             sleep_interval=sleep_interval
         )
+    
+    def delete_object(self, object_name:str) -> None:
+        """Delete an object.
+
+        Parameters:
+            object_name: the name of the object to delete
+        
+        Returns:
+            None
+        """
+        os_delete_object(self.os_client, self.namespace_name, self.bucket_name, object_name)
