@@ -5,7 +5,7 @@ from typing import Optional, List, Generator, Callable, Tuple
 import time
 import os
 
-from oci_core import list_objects_start_with, os_upload_json, os_download_json_with_etag, os_download, os_upload, os_copy_object, os_delete_object
+from oci_core import list_objects_start_with, os_upload_json, os_download_json_with_etag, os_download, os_upload, os_copy_object, os_delete_object, os_has_object
 from oci.object_storage.object_storage_client import ObjectStorageClient
 from oci.object_storage.models import ObjectSummary
 import oci
@@ -31,20 +31,20 @@ class Bucket:
     #     copy_object
     ##############################################################
 
-    def __init__(self, *, 
-                 os_client:Optional[ObjectStorageClient], 
+    def __init__(self, *,
+                 os_client:Optional[ObjectStorageClient],
                  region: str,
-                 namespace_name:str, 
+                 namespace_name:str,
                  bucket_name:str) -> None:
         self.os_client = os_client
         self.region = region
         self.namespace_name = namespace_name
         self.bucket_name = bucket_name
-    
-    def list(self, *, 
-             prefix:Optional[str]=None, 
+
+    def list(self, *,
+             prefix:Optional[str]=None,
              fields:List[str]=["name"],
-             retry_count:float=5, 
+             retry_count:float=5,
              sleep_interval:float=5
             ) -> Generator[ObjectSummary, None, None]:
         """List all objects.
@@ -56,15 +56,15 @@ class Bucket:
             sleep_interval: gap between retries
         """
         return list_objects_start_with(
-            self.os_client, 
-            self.namespace_name, 
-            self.bucket_name, 
+            self.os_client,
+            self.namespace_name,
+            self.bucket_name,
             prefix,
             fields=','.join(fields),
             retry_count=retry_count,
             sleep_interval=sleep_interval
         )
-    
+
     def get_json(self, *, object_name:str, etag:Optional[str]=None, retry_count:float=5, sleep_interval:float=5) -> Tuple[dict, str]:
         """Get a JSON object.
 
@@ -73,14 +73,14 @@ class Bucket:
             etag: if present, the API will fail if etag does not match. You can also specify "*" to match any etag.
             retry_count: number of time to retry for recoverable error
             sleep_interval: gap between retries
-        
+
         Returns:
-            A tuple, first element is data for the JSON, 2nd element is the etag. 
+            A tuple, first element is data for the JSON, 2nd element is the etag.
             If object does not exist, both data and etag are None
         """
         try:
             return  os_download_json_with_etag(
-                self.os_client, 
+                self.os_client,
                 self.namespace_name,
                 self.bucket_name,
                 object_name,
@@ -102,14 +102,14 @@ class Bucket:
             data: the json data
             retry_count: number of time to retry for recoverable error
             sleep_interval: gap between retries
-        
+
         Returns:
             The new etag
 
         This API may create a new object or update an existing object.
         """
         return os_upload_json(
-            self.os_client, 
+            self.os_client,
             data,
             self.namespace_name,
             self.bucket_name,
@@ -128,13 +128,13 @@ class Bucket:
                   But API will fail if the object does not exist.
             retry_count: number of time to retry for recoverable error
             sleep_interval: gap between retries
-        
+
         Returns:
             The new etag
         """
         assert etag is not None
         return os_upload_json(
-            self.os_client, 
+            self.os_client,
             data,
             self.namespace_name,
             self.bucket_name,
@@ -152,12 +152,12 @@ class Bucket:
             data: the json data
             retry_count: number of time to retry for recoverable error
             sleep_interval: gap between retries
-        
+
         Returns:
             The new etag
         """
         return os_upload_json(
-            self.os_client, 
+            self.os_client,
             data,
             self.namespace_name,
             self.bucket_name,
@@ -166,7 +166,7 @@ class Bucket:
             sleep_interval=sleep_interval,
             opts={"if_none_match":"*"}
         )
-    
+
     def transform_json(self, *, object_name:str, transformer:Callable[[dict], dict], collision_retry_count=5, collision_sleep_interval=5, retry_count=5, sleep_interval=5) -> Tuple[dict, dict]:
         """Transform a JSON object
 
@@ -177,7 +177,7 @@ class Bucket:
             collision_sleep_interval: gap between collision retries
             retry_count: number of time to retry for recoverable error
             sleep_interval: gap between retries
-        
+
         Returns:
             a tuple of 2 elements, first has the etag and data before the change, 2nd has the etag and data after the change
         """
@@ -236,14 +236,14 @@ class Bucket:
             object_name: name of the object
             retry_count: number of time to retry for recoverable error
             sleep_interval: gap between retries
-        
+
         Returns:
             The new etag
 
         This API may create a new object or update an existing object.
         """
         return os_upload(
-            self.os_client, 
+            self.os_client,
             local_filename,
             self.namespace_name,
             self.bucket_name,
@@ -260,28 +260,28 @@ class Bucket:
             object_name_base: the destination of the upload location
             retry_count: number of time to retry for recoverable error
             sleep_interval: gap between retries
-        
+
         Returns:
             None
-        
+
         Anything other than file or dir will be ignored from local_dir_base
         """
 
         if os.path.isfile(local_dir_base):
             self.create_or_update_object(
-                local_filename=local_dir_base, 
-                object_name=object_name_base, 
-                retry_count=retry_count, 
+                local_filename=local_dir_base,
+                object_name=object_name_base,
+                retry_count=retry_count,
                 sleep_interval=sleep_interval
             )
             return
-        
+
         if os.path.isdir(local_dir_base):
             for f in os.listdir(local_dir_base):
                 self.upload_dir(
-                    local_dir_base=os.path.join(local_dir_base, f), 
+                    local_dir_base=os.path.join(local_dir_base, f),
                     object_name_base=os.path.join(object_name_base, f),
-                    retry_count=retry_count, 
+                    retry_count=retry_count,
                     sleep_interval=sleep_interval
                 )
 
@@ -294,7 +294,7 @@ class Bucket:
             dst_object_name: the destination object name
             retry_count: number of time to retry for recoverable error
             sleep_interval: gap between retries
-        
+
         Returns:
             None
         """
@@ -302,17 +302,28 @@ class Bucket:
             self.os_client,
             self.namespace_name, self.bucket_name, object_name,
             dst_bucket.region, dst_bucket.namespace_name, dst_bucket.bucket_name, dst_object_name,
-            retry_count=retry_count, 
+            retry_count=retry_count,
             sleep_interval=sleep_interval
         )
-    
+
     def delete_object(self, object_name:str) -> None:
         """Delete an object.
 
         Parameters:
             object_name: the name of the object to delete
-        
+
         Returns:
             None
         """
         os_delete_object(self.os_client, self.namespace_name, self.bucket_name, object_name)
+
+    def has_object(self, *, object_name:str) -> None:
+        """Check if an object exists.
+
+        Parameters:
+            object_name: the name of the object to delete
+
+        Returns:
+            True if the object exists, otherwise False
+        """
+        return os_has_object(self.os_client, self.namespace_name, self.bucket_name, object_name)

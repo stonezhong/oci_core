@@ -11,13 +11,13 @@ with open(os.path.join(HERE, "README.md"), "r") as f:
 # This call to setup() does all the work
 setup(
     name="oci-core",
-    version="0.0.63",
+    version="0.0.79",
     description="OCI Core Helper",
     long_description=README,
     long_description_content_type="text/markdown",
-    url="https://github.com/stonezhong/oci_core",
+    url="https://bitbucket.oci.oraclecorp.com/projects/HWD/repos/hadoop/browse/etl/sharedLibs/oci_core",
     author="Stone Zhong",
-    author_email="stonezhong@hotmail.com",
+    author_email="shidong.zhong@oracle.com",
     classifiers=[
         "Programming Language :: Python :: 3",
     ],

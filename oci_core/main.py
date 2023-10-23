@@ -27,7 +27,7 @@ def get_region_name(region):
 
 def _shall_retry_signer(e):
     if isinstance(e, oci.exceptions.ServiceError):
-        if e.status == 401:
+        if hasattr(e, "status") and e.status == 401:
             return True
         else:
             return False
@@ -70,43 +70,46 @@ def _get_signer_unsafe(retry_count=5, sleep_interval=5):
 
 
 # get oci client for a given service
-def _get_oci_service_client(service_client_class, service_endpoint, config=None):
+def _get_oci_service_client(service_client_class, service_endpoint, config=None, retry_strategy=None):
     # if config is None, then we are using instance principle
     if config is None:
         signer = _get_signer()
         client = service_client_class(
-            {}, signer=signer, 
-            service_endpoint=service_endpoint
+            {}, signer=signer,
+            service_endpoint=service_endpoint,
+            retry_strategy=retry_strategy
         )
     else:
-        client = service_client_class(config)
+        client = service_client_class(config, retry_strategy=retry_strategy)
     return client
 
 
 # Object Storage Service API
 # get object storage client
-def get_os_client(region, config=None):
+def get_os_client(region, config=None, retry_strategy=oci.retry.DEFAULT_RETRY_STRATEGY):
     if region is None:
         service_endpoint = None
     else:
         service_endpoint = f"https://objectstorage.{get_region_name(region)}.oraclecloud.com"
     return _get_oci_service_client(
-        oci.object_storage.ObjectStorageClient, 
-        service_endpoint, 
-        config=config
+        oci.object_storage.ObjectStorageClient,
+        service_endpoint,
+        config=config,
+        retry_strategy=retry_strategy
     )
 
 # Data Flow API
 # get dataflow client using instance principle
-def get_df_client(region, config=None):
+def get_df_client(region, config=None, retry_strategy=oci.retry.DEFAULT_RETRY_STRATEGY):
     if region is None:
         service_endpoint = None
     else:
         service_endpoint = f"https://dataflow.{get_region_name(region)}.oci.oraclecloud.com"
     return _get_oci_service_client(
-        oci.data_flow.DataFlowClient, 
-        service_endpoint, 
-        config=config
+        oci.data_flow.DataFlowClient,
+        service_endpoint,
+        config=config,
+        retry_strategy=retry_strategy
     )
 
 def _shall_retry(e):
@@ -115,6 +118,26 @@ def _shall_retry(e):
             return True
         else:
             return False
+    if isinstance(e, oci.exceptions.ConnectTimeout):
+        return True
+    if isinstance(e, oci.exceptions.RequestException):
+        return True
+    if isinstance(e, oci._vendor.urllib3.exceptions.ProtocolError):
+        return True
+    return False
+
+def _shall_retry_for_read(e):
+    if hasattr(e, "status") and e.status == 500:
+        return True
+    if isinstance(e, oci._vendor.urllib3.exceptions.ReadTimeoutError):
+        return True
+    if isinstance(e, oci.exceptions.ServiceError):
+        if e.status == 503:
+            return True
+        else:
+            return False
+    if isinstance(e, oci.exceptions.ConnectTimeout):
+        return True
     if isinstance(e, oci.exceptions.RequestException):
         return True
     if isinstance(e, oci._vendor.urllib3.exceptions.ProtocolError):
@@ -165,7 +188,7 @@ def os_download_to_memory(os_client, namespace, bucket, object_name, retry_count
         try:
             return _os_download_to_memory_no_retry(os_client, namespace, bucket, object_name, chunk_size, opts=opts)
         except Exception as e:
-            if i >= (retry_count - 1) or not _shall_retry(e):
+            if i >= (retry_count - 1) or not _shall_retry_for_read(e):
                 logger.error("Download object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
                     namespace, bucket, object_name, i+1, e,  str(e)
                 ))
@@ -195,7 +218,7 @@ def os_download(os_client, local_filename, namespace, bucket, object_name, retry
             etag = _os_download_no_retry(os_client, local_filename, namespace, bucket, object_name, chunk_size, opts=opts)
             return etag
         except Exception as e:
-            if i >= (retry_count - 1) or not _shall_retry(e):
+            if i >= (retry_count - 1) or not _shall_retry_for_read(e):
                 logger.error("Download object (namespace={}, bucket={}, object_name={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
                     namespace, bucket, object_name, i+1, e,  str(e)
                 ))
@@ -260,6 +283,19 @@ def os_download_json_with_etag(os_client, namespace, bucket, object_name, retry_
             return json.load(f), etag
     finally:
         os.remove(tmp_f.name)
+
+
+def get_delegation_token_path(spark):
+    conf = spark.sparkContext.getConf()
+    token_path = conf.get("spark.hadoop.fs.oci.client.auth.delegationTokenPath")
+    return token_path
+
+
+def get_delegation_token_from_path(token_path):
+    with open(token_path) as fd:
+        delegation_token = fd.read()
+    return delegation_token
+
 
 def get_delegation_token(spark):
     conf = spark.sparkContext.getConf()
@@ -333,9 +369,9 @@ def list_objects_start_with(os_client, namespace, bucket, prefix, fields="name",
     for i in range(0, retry_count):
         try:
             return oci.pagination.list_call_get_all_results_generator(
-                os_client.list_objects, 
-                'record', 
-                namespace, bucket, prefix=prefix, 
+                os_client.list_objects,
+                'record',
+                namespace, bucket, prefix=prefix,
                 fields = fields,
             )
         except Exception as e:
@@ -361,7 +397,7 @@ def os_delete_objects(os_client, namespace, bucket, prefix, retry_count=5, sleep
 
 def os_delete_object_if_exists(os_client, namespace, bucket, object_name, retry_count=5, sleep_interval=5):
     try:
-        os_delete_object(os_client, namespace, bucket, record.name, retry_count=retry_count, sleep_interval=sleep_interval)
+        os_delete_object(os_client, namespace, bucket, object_name, retry_count=retry_count, sleep_interval=sleep_interval)
     except oci.exceptions.ServiceError as e:
         if e.status!=404:
             raise
@@ -389,7 +425,7 @@ def os_rename_object(os_client, namespace, bucket, source_name, new_name, retry_
             time.sleep(sleep_interval)
 
 def os_copy_object(
-    os_client, 
+    os_client,
     src_namespace_name, src_bucket_name, src_object_name,
     dst_region, dst_namespace_name, dst_bucket_name, dst_object_name,
     retry_count=5, sleep_interval=5
@@ -428,31 +464,63 @@ def os_rename_objects(os_client, namespace, bucket, prefix, new_name_cb, retry_c
     ):
         os_rename_object(os_client, namespace, bucket, source_name, new_name, retry_count=retry_count, sleep_interval=sleep_interval)
 
+def _os_list_dir_no_retry(os_client, namespace, bucket):
+    prefixes = set()
+    start = None
+    while True:
+        r = os_client.list_objects(namespace, bucket, delimiter="/", start=start)
+        for prefix in r.data.prefixes:
+            prefixes.add(prefix)
+        start = r.data.next_start_with
+        if start is None:
+            break
+    return sorted(list(prefixes))
+
+def os_list_dir(os_client, namespace, bucket, retry_count=5, sleep_interval=5):
+    if retry_count < 1:
+        raise ValueError(f"bad retry_count ({retry_count}), MUST >=1")
+    for i in range(0, retry_count):
+        try:
+            return _os_list_dir_no_retry(os_client, namespace, bucket)
+        except Exception as e:
+            if i >= (retry_count - 1) or not _shall_retry(e):
+                logger.error("list_objects (namespace={}, bucket={}) failed for {} times, error is: {}, message is: {}, no more retrying...".format(
+                    namespace, bucket, i+1, e,  str(e)
+                ))
+                raise
+            logger.warning("list_objects (namespace={}, bucket={}) failed for {} times, error is: {}, message is: {}, retrying after {} seconds...".format(
+                namespace, bucket, i+1, e,  str(e), sleep_interval
+            ))
+            time.sleep(sleep_interval)
+
+
 # For secret service
 
 # Vault Service Secret Retrieval API
 # get secret service client
-def get_secrets_client(region=None, config=None):
+def get_secrets_client(region=None, config=None, retry_strategy=oci.retry.DEFAULT_RETRY_STRATEGY):
     if region is None:
         service_endpoint = None
     else:
         service_endpoint = f"https://secrets.vaults.{get_region_name(region)}.oci.oraclecloud.com"
     return _get_oci_service_client(
-        oci.secrets.SecretsClient, 
+        oci.secrets.SecretsClient,
         service_endpoint,
-        config=config
+        config=config,
+        retry_strategy=retry_strategy
     )
 
 # Vault Service Secret Management API
-def get_vaults_client(region=None, config=None):
+def get_vaults_client(region=None, config=None, retry_strategy=oci.retry.DEFAULT_RETRY_STRATEGY):
     if region is None:
         service_endpoint = None
     else:
         service_endpoint = f"https://vaults.{get_region_name(region)}.oci.oraclecloud.com"
     return _get_oci_service_client(
-        oci.vault.VaultsClient, 
+        oci.vault.VaultsClient,
         service_endpoint,
-        config=config
+        config=config,
+        retry_strategy=retry_strategy
     )
 
 def __encode_base64_content(content, encoding):
@@ -481,7 +549,7 @@ def __decode_base64_bin_content(content):
 
 
 def secrets_wait_for_secret_state(
-    vaults_client, secret_id, target_state, 
+    vaults_client, secret_id, target_state,
     wait_interval=5, max_wait_count=100
 ):
     for i in range(0, max_wait_count):
@@ -531,10 +599,10 @@ def secrets_get_secret_info(vaults_client, compartment_id, vault_id, secret_name
         if record.secret_name != secret_name:
             continue
         return (record.id, record.lifecycle_state, )
-    
+
     return (None, None, )
 
-def secrets_create_value(vaults_client, compartment_id, vault_id, 
+def secrets_create_value(vaults_client, compartment_id, vault_id,
     secret_name, secret_content, key_id, secret_description=None, encoding="utf-8",
     is_binary=False
 ):
@@ -551,7 +619,7 @@ def secrets_create_value(vaults_client, compartment_id, vault_id,
     )
     secrets_details = oci.vault.models.CreateSecretDetails(
         compartment_id=compartment_id,
-        description = secret_description, 
+        description = secret_description,
         secret_content=secret_content_details,
         secret_name=secret_name,
         vault_id=vault_id,
@@ -574,7 +642,7 @@ def secrets_update_value(vaults_client, secret_id, secret_content, encoding="utf
     )
     secrets_details = oci.vault.models.UpdateSecretDetails(secret_content=secret_content_details)
     composite.update_secret_and_wait_for_state(
-        secret_id, 
+        secret_id,
         secrets_details,
         wait_for_states=[oci.vault.models.Secret.LIFECYCLE_STATE_ACTIVE]
     )
@@ -592,7 +660,7 @@ def secrets_undelete_value(vaults_client, secret_id):
     secrets_wait_for_secret_state(vaults_client, secret_id, "ACTIVE")
     return "ACTIVE"
 
-def secrets_create_or_update_value(vaults_client, compartment_id, vault_id, 
+def secrets_create_or_update_value(vaults_client, compartment_id, vault_id,
     secret_name, secret_content, key_id, encoding="utf-8", is_binary=False
 ):
     secret_id, secret_state = secrets_get_secret_info(
@@ -600,8 +668,8 @@ def secrets_create_or_update_value(vaults_client, compartment_id, vault_id,
     )
     if secret_id is None:
         secrets_create_value(
-            vaults_client, compartment_id, vault_id, 
-            secret_name, secret_content, key_id, 
+            vaults_client, compartment_id, vault_id,
+            secret_name, secret_content, key_id,
             encoding=encoding, is_binary=is_binary
         )
         return
@@ -614,7 +682,7 @@ def secrets_create_or_update_value(vaults_client, compartment_id, vault_id,
             vaults_client, secret_id, secret_content, encoding=encoding, is_binary=is_binary
         )
         return
-    
+
     raise Exception(f"Unable to set secret value: name = {secret_name}, state={secret_state}")
 
 
@@ -648,13 +716,13 @@ def get_stream_client(service_endpoint, config=None):
     if config is None:
         signer = _get_signer()
         client = oci.streaming.StreamClient(
-            {}, 
+            {},
             service_endpoint=service_endpoint,
             signer=signer
         )
     else:
         client = oci.streaming.StreamClient(
-        config, 
+        config,
         service_endpoint=service_endpoint,
     )
     return client
